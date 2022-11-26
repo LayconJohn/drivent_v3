@@ -57,7 +57,7 @@ describe("GET /payments", () => {
 
       expect(response.status).toEqual(httpStatus.BAD_REQUEST);
     });
-
+ 
     it("should respond with status 404 when given ticket doesnt exist", async () => {
       const user = await createUser();
       const token = await generateValidToken(user);

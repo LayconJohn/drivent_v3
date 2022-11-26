@@ -12,8 +12,8 @@ async function getHotels(userId: number) {
     throw notFoundError();
   }  
   const ticket = await ticketRepository.findTicketByEnrollmentId(enrollment.id);
-  if (!ticket) {
-    throw notFoundError();
+  if (!ticket.id) {
+    throw unauthorizedError();
   }
   if (ticket.TicketType.isRemote || !ticket.TicketType.includesHotel) {
     throw requestError(400, "BAD_REQUEST");
@@ -29,7 +29,30 @@ async function getRoomsByHotelId(userId: number, hotelId: number) {
   if (!userId) {
     throw unauthorizedError();
   }
-  return; 
+  const enrollment = await enrollmentRepository.findWithAddressByUserId(userId);
+  if (!enrollment) {
+    throw notFoundError();
+  }  
+  const ticket = await ticketRepository.findTicketByEnrollmentId(enrollment.id);
+  if (!ticket.id) {
+    throw unauthorizedError();
+  }
+  if (ticket.TicketType.isRemote || !ticket.TicketType.includesHotel) {
+    throw requestError(400, "BAD_REQUEST");
+  }
+  if (ticket.status !== "PAID") {
+    throw requestError(400, "BAD_REQUEST");
+  }
+  const hotel = await hotelsRepository.findHotelById(hotelId);
+  if (!hotel) {
+    throw requestError(400, "BAD_REQUEST");
+  }
+
+  const rooms = await hotelsRepository.findRoomsByHotelId(hotelId);
+  if (!rooms) {
+    throw notFoundError();
+  }
+  return rooms; 
 }
 
 const hotelsService = {

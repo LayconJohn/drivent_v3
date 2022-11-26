@@ -1,5 +1,4 @@
 import app, { init } from "@/app";
-import { prisma } from "@/config";
 import { TicketStatus } from "@prisma/client";
 import httpStatus from "http-status";
 import supertest from "supertest";
@@ -13,10 +12,9 @@ import {
   createTicket,
   createPayment,
   generateCreditCardData,
-  createTicketTypeWithoutAcomodation
+  createcustomTicketType,
+  createHotels
 } from "../factories";
-import { request } from "http";
-import { response } from "express";
 
 beforeAll(async () => {
   await init();
@@ -29,94 +27,95 @@ beforeEach(async () => {
 const server = supertest(app);
 
 describe("GET /hotels", () => {
-  it("should respond with status 401 if no token is given", async () => {
-    const response = await server.get("/hotels");
-    
-    expect(response.status).toBe(httpStatus.UNAUTHORIZED);
-  });
+  describe("Authorization tests", () => {
+    it("should response with status 401 if no token", async () => {
+      const response = await server.get("/hotels");
+
+      expect(response.statusCode).toEqual(httpStatus.UNAUTHORIZED);
+    });
+
+    it("should response with status 401 when token is not valid", async () => {
+      const token = faker.lorem.word();
+
+      const response = await server.get("/hotels").set("Authorization", `Bearer ${token}`);
+
+      expect(response.statusCode).toEqual(httpStatus.UNAUTHORIZED);
+    });
+
+    it("sholud response with status 401 if there no session", async () => {
+      const userWithoutSession = await createUser();
+      const token = jwt.sign({ userId: userWithoutSession.id }, process.env.JWT_SECRET);
+
+      const response = await server.get("/hotels").set("Authorization", `Bearer ${token}`);
+
+      expect(response.statusCode).toEqual(httpStatus.UNAUTHORIZED);
+    });
+
+    describe("When token is valid", () => {
+      it("should response with status 404 if user don't have enrollment", async () => {
+        const user = await createUser();
+        const token = await generateValidToken(user);
+
+        const response = await server.get("/hotels").set("Authorization", `Bearer ${token}`);
+
+        expect(response.statusCode).toEqual(httpStatus.NOT_FOUND);
+      });
  
-  it("should respond with status 401 if given token is not valid", async () => {
-    const token = faker.lorem.word();
-    
-    const response = await server.get("/hotels").set("Authorization", `Bearer ${token}`);
-    
-    expect(response.status).toBe(httpStatus.UNAUTHORIZED);
-  });
+      it("should response with status 401 when given ticket doesnt exist", async () => {
+        const user = await createUser();
+        const token = generateValidToken(user);
+        await createEnrollmentWithAddress(user);
 
-  it("should respond with status 401 if there is no session for given token", async () => {
-    const userWithoutSession = await createUser();
-    const token = jwt.sign({ userId: userWithoutSession.id }, process.env.JWT_SECRET);
-    
-    const response = await server.get("/hotels").set("Authorization", `Bearer ${token}`);
-    
-    expect(response.status).toBe(httpStatus.UNAUTHORIZED);
-  });
+        const response = await server.get("/hotels").set("Authorization", `Bearer ${token}`);
 
-  describe("When token is valid", () => {
-    it("should respond with status 404 if user don't have enrollment", async () => {
-      const user = await createUser();
-      const token = await generateValidToken(user);
+        expect(response.statusCode).toEqual(httpStatus.UNAUTHORIZED);
+      });
 
-      const response = await server.get("/hotels").set("Authorization", `Bearer ${token}`);
+      it("should reponse with status 400 when the ticket status is not PAID", async () => {
+        const user = await createUser();
+        const token = await generateValidToken(user);
+        const enrollment = await createEnrollmentWithAddress(user);
+        const ticketType = await createTicketType();
+        await createTicket(enrollment.id, ticketType.id, TicketStatus.RESERVED);
 
-      expect(response.statusCode).toEqual(httpStatus.NOT_FOUND);
-    });
+        const response = await server.get("/hotels").set("Authorization", `Bearer ${token}`);
 
-    it("should respond with status 404 when given ticket doesnt exist", async () => {
-      const user = await createUser();
-      const token = await generateValidToken(user);
-      await createEnrollmentWithAddress(user);
-      
-      const response = await server.get("/hotels").set("Authorization", `Bearer ${token}`);
-      
-      expect(response.status).toEqual(httpStatus.NOT_FOUND);
-    });
+        expect(response.statusCode).toEqual(httpStatus.BAD_REQUEST);
+      });
 
-    it("should response with status 400 when the ticket status is not PAID", async () => {
-      const user = await createUser();
-      const token = await generateValidToken(user);
-      const enrollment = await createEnrollmentWithAddress(user);
-      const ticket = await createTicketType();
-      await createTicket(enrollment.id, ticket.id, TicketStatus.RESERVED);
-            
-      const response = await server.get("/hotels").set("Authorization", `Bearer ${token}`);
+      it("should response with status 400 when the ticket type does not include accommodation", async () => {
+        const user = await createUser();
+        const token = await generateValidToken(user);
+        const enrollment = await createEnrollmentWithAddress(user);
+        const ticketTypeWithoutAcomodation = await createcustomTicketType(true, false);
+        await createTicket(enrollment.id, ticketTypeWithoutAcomodation.id, TicketStatus.PAID);
 
-      expect(response.status).toEqual(httpStatus.BAD_REQUEST);
-    });
+        const response = await server.get("/hotels").set("Authorization", `Bearer ${token}`);
 
-    it("should response with status 400 when the ticket type does not include accommodation", async () => {
-      const user = await createUser();
-      const token = await generateValidToken(user);
-      const enrollment = await createEnrollmentWithAddress(user);
-      const ticketTypeWithoutAcomodation = await createTicketTypeWithoutAcomodation();
-      await createTicket(enrollment.id, ticketTypeWithoutAcomodation.id, TicketStatus.PAID);
-            
-      const response = await server.get("/hotels").set("Authorization", `Bearer ${token}`);
+        expect(response.statusCode).toEqual(httpStatus.BAD_REQUEST);
+      });
 
-      expect(response.status).toEqual(httpStatus.BAD_REQUEST);
-    });
+      it("should response with status 200 and hotels data", async () => {
+        const user = await createUser();
+        const token = await generateValidToken(user);
+        const enrollment = await createEnrollmentWithAddress(user);
+        const ticketType = await createcustomTicketType(false, true);
+        await createTicket(enrollment.id, ticketType.id, TicketStatus.PAID);
+        await createHotels();
 
-    it("should response with status 200 and hotels data", async () => {
-      const user = await createUser();
-      const token = await generateValidToken(user);
-      const enrollment = await createEnrollmentWithAddress(user);
-      const ticket = await createTicketType();
-      await createTicket(enrollment.id, ticket.id, TicketStatus.PAID);
+        const response = await server.get("/hotels").set("Authorization", `Bearer ${token}`);
 
-      const response = await server.get("/hotels").set("Authorization", `Bearer ${token}`);
-
-      expect(response.statusCode).toEqual(httpStatus.OK);
-      expect(response.body).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            id: expect.any(Number),
-            name: expect.any(String),
-            image: expect.any(String),
-            createdAt: expect.any(String),
-            updatedAt: expect.any(String),
-          })
-        ])
-      );
+        expect(response.statusCode).toEqual(httpStatus.OK);
+        expect(response.body).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: expect.any(Number),
+              name: expect.any(String),
+              image: expect.any(String)
+            })
+          ])
+        );
+      });
     });
   });
 });
