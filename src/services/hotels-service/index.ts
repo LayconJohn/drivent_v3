@@ -32,7 +32,7 @@ async function getRoomsByHotelId(userId: number, hotelId: number) {
   const enrollment = await enrollmentRepository.findWithAddressByUserId(userId);
   if (!enrollment) {
     throw notFoundError();
-  }  
+  }   
   const ticket = await ticketRepository.findTicketByEnrollmentId(enrollment.id);
   if (!ticket.id) {
     throw unauthorizedError();
@@ -43,15 +43,15 @@ async function getRoomsByHotelId(userId: number, hotelId: number) {
   if (ticket.status !== "PAID") {
     throw requestError(400, "BAD_REQUEST");
   }
-  const hotel = await hotelsRepository.findHotelById(hotelId);
-  if (!hotel) {
-    throw requestError(400, "BAD_REQUEST");
-  }
 
-  const rooms = await hotelsRepository.findRoomsByHotelId(hotelId);
-  if (!rooms) {
+  const hotel = await hotelsRepository.findHotelById(hotelId);
+  
+  if (!hotel) {
+    console.log("Caiu nesse erro: Não existe hotel");
     throw notFoundError();
   }
+  const rooms = await hotelsRepository.listRoomsByHotelId(hotelId);
+
   return rooms; 
 }
 
